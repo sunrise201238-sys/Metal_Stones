@@ -65,7 +65,11 @@
         <div class="result-sub">
           <div><span>石の単価</span><b id="r-percarat">—</b></div>
           <div><span>正味金属重量</span><b id="r-netweight">—</b></div>
-          <div><span>適用した地金価格</span><b id="r-ppg">—</b></div>
+          <div class="ppg-cell">
+            <span>適用した地金価格</span>
+            <span class="ppg-row">¥<input type="number" id="in-ppg" class="ppg-input" step="any" min="0" inputmode="decimal"> /g</span>
+            <small class="ppg-date" id="r-ppg-date">—</small>
+          </div>
         </div>
         <p class="note warn" id="r-note" hidden></p>
       </div>
