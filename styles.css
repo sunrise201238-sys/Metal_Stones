@@ -250,6 +250,8 @@ tbody tr:hover { background: #fafbfc; }
   padding: 16px;
   z-index: 50;
 }
+/* hidden 属性が付いているときは必ず非表示にする（display:flex の上書き対策） */
+.modal-overlay[hidden] { display: none; }
 .modal {
   background: #fff;
   border-radius: var(--radius);
