@@ -5,8 +5,8 @@
    ============================================================ */
 window.APP_CONFIG = {
   github: {
-    owner: 'YOUR_GITHUB_USERNAME', // ← あなたのGitHubユーザー名
-    repo: 'YOUR_REPO_NAME',        // ← リポジトリ名
+    owner: 'sunrise201238-sys', // ← あなたのGitHubユーザー名
+    repo: 'Metal_Stones',       // ← リポジトリ名
     branch: 'main',                // 通常は main のまま
     dataPath: 'prices.json',       // 価格データのファイル名（変更不要）
   },
