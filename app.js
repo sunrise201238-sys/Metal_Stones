@@ -130,24 +130,17 @@ function fillPurity(metal) {
 }
 
 /* ============================================================
-   価格の検索（指定日に最も近い日付。前後どちらでも可）
-   ※ 価格データは日付の昇順に並んでいる前提
+   価格の検索（購入日「以前」で最も新しい＝直近の営業日）
+   ※ 該当日が無ければ、その前で最も近い日付の価格を使う
+   ※ 価格データは日付の昇順に並んでいる前提（ExcelのVLOOKUP方式）
    ============================================================ */
 function lookupPrice(isoDate, metal) {
-  if (!DATA.prices.length) return null;
-  const target = Date.parse(isoDate);
   let chosen = null;
-  let best = Infinity;
   for (const p of DATA.prices) {
-    const diff = Math.abs(Date.parse(p.date) - target);
-    if (diff < best) {
-      best = diff;
-      chosen = p;
-    } else if (diff > best) {
-      break; // 昇順なので最小を過ぎたら以降は遠ざかるだけ
-    }
+    if (p.date <= isoDate) chosen = p; // 以前の日付を上書きし続ける＝直近が残る
+    else break; // 昇順なので購入日を超えたら終了
   }
-  if (!chosen) return null;
+  if (!chosen) return null; // 購入日より前のデータが1件も無い
   return {
     row: chosen,
     perGram: metal === 'Au' ? chosen.gold : chosen.platinum,
@@ -169,8 +162,15 @@ function setupCalc() {
     priceOverride = null;
     calculate();
   });
-  ['in-weight', 'in-carat', 'in-price', 'in-purity-custom'].forEach((id) =>
+  ['in-weight', 'in-price', 'in-purity-custom'].forEach((id) =>
     $(id).addEventListener('input', calculate)
+  );
+  // 石のカラット（3スロット）: 合計を更新して再計算
+  ['in-carat-1', 'in-carat-2', 'in-carat-3'].forEach((id) =>
+    $(id).addEventListener('input', () => {
+      updateCaratTotal();
+      calculate();
+    })
   );
   // 地金価格をユーザーが直接編集（カスタム）
   $('in-ppg').addEventListener('input', () => {
@@ -178,6 +178,18 @@ function setupCalc() {
     priceOverride = isFinite(v) && v > 0 ? v : null;
     calculate();
   });
+  updateCaratTotal();
+}
+
+/* 石のカラット3スロットの合計（ct） */
+function totalCarat() {
+  return ['in-carat-1', 'in-carat-2', 'in-carat-3'].reduce((sum, id) => {
+    const v = parseFloat($(id).value);
+    return sum + (isFinite(v) && v > 0 ? v : 0);
+  }, 0);
+}
+function updateCaratTotal() {
+  $('carat-total').textContent = '合計 ' + numFmt(totalCarat(), 3) + ' ct';
 }
 
 function calculate() {
@@ -197,7 +209,7 @@ function calculate() {
       ? parseFloat($('in-purity-custom').value)
       : parseFloat($('in-purity').value);
   const weight = parseFloat($('in-weight').value);
-  const carat = parseFloat($('in-carat').value) || 0;
+  const carat = totalCarat();
   const price = parseFloat($('in-price').value);
 
   if (!date || !(purity > 0) || !(weight > 0) || !(price > 0)) {
@@ -223,7 +235,11 @@ function calculate() {
       $('result').hidden = false;
       $('r-metal').textContent = '—';
       $('r-stone').textContent = '—';
-      showNote('地金価格データがありません。データベースに価格を追加してください。', true);
+      $('r-percarat').textContent = '—';
+      $('r-netweight').textContent = '—';
+      $('r-ppg-date').textContent = '（—）';
+      if (document.activeElement !== $('in-ppg')) $('in-ppg').value = '';
+      showNote(`${date} 以前の地金価格データがありません。データベースに価格を追加してください。`, true);
       return;
     }
     perGram = lk.perGram;
@@ -253,7 +269,7 @@ function calculate() {
   if (custom) {
     msgs.push('入力した地金価格で計算しています。購入日や金属を変えると自動価格に戻ります。');
   } else if (lk && !lk.exact) {
-    msgs.push(`${date} の価格がないため、最も近い ${lk.row.date} の価格を使用しました。`);
+    msgs.push(`${date} の価格がないため、直近の ${lk.row.date} の価格を使用しました。`);
   }
   if (netWeight < 0) { msgs.push('カラットが全体重量に対して大きすぎます（正味金属重量がマイナス）。'); warn = true; }
   if (stoneValue < 0) { msgs.push('石の価値がマイナスです。商品価格または地金価格をご確認ください。'); warn = true; }

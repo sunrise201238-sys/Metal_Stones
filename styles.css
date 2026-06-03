@@ -100,6 +100,18 @@ main { max-width: 720px; margin: 16px auto 40px; padding: 0 16px; }
 }
 .form-grid label:last-of-type { grid-column: 1 / -1; }
 #custom-purity-wrap { grid-column: 1 / -1; }
+.form-grid label.stone-carats { grid-column: 1 / -1; }
+.carat-slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.carat-total {
+  font-weight: 700;
+  color: var(--ink);
+  font-size: .85rem;
+  margin-top: 2px;
+}
 .hidden { display: none !important; }
 
 input, select {

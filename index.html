@@ -40,8 +40,13 @@
           <label>全体重量 (g)
             <input type="number" id="in-weight" step="any" min="0" placeholder="例: 6.7" inputmode="decimal">
           </label>
-          <label>石の合計カラット (ct)
-            <input type="number" id="in-carat" step="any" min="0" placeholder="例: 1.77" inputmode="decimal">
+          <label class="stone-carats">石のカラット（最大3石・ct）
+            <div class="carat-slots">
+              <input type="number" id="in-carat-1" class="carat-slot" step="any" min="0" placeholder="石1" inputmode="decimal">
+              <input type="number" id="in-carat-2" class="carat-slot" step="any" min="0" placeholder="石2" inputmode="decimal">
+              <input type="number" id="in-carat-3" class="carat-slot" step="any" min="0" placeholder="石3" inputmode="decimal">
+            </div>
+            <span class="carat-total" id="carat-total">合計 0 ct</span>
           </label>
           <label>商品価格 (¥)
             <input type="number" id="in-price" step="any" min="0" placeholder="例: 118182" inputmode="numeric">
