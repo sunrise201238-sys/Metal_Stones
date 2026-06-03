@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>地金価値 簡単確認</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>地金価値 簡単確認</h1>
+    <p class="subtitle">商品価格を「金属の価値」と「石の価値」に分けて計算します</p>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="calc">計算</button>
+    <button class="tab-btn" data-tab="db">地金価格データベース</button>
+  </nav>
+
+  <main>
+    <!-- ============ Calculator ============ -->
+    <section id="tab-calc" class="tab-panel active">
+      <div class="card">
+        <div class="form-grid">
+          <label>購入日
+            <input type="date" id="in-date">
+          </label>
+          <label>金属
+            <select id="in-metal">
+              <option value="Au">金 (Au)</option>
+              <option value="Pt">プラチナ (Pt)</option>
+            </select>
+          </label>
+          <label>純度
+            <select id="in-purity"></select>
+          </label>
+          <label class="hidden" id="custom-purity-wrap">純度（数値で直接入力）
+            <input type="number" id="in-purity-custom" step="any" min="0" placeholder="金=K数値 / Pt=1000分率">
+          </label>
+          <label>全体重量 (g)
+            <input type="number" id="in-weight" step="any" min="0" placeholder="例: 6.7" inputmode="decimal">
+          </label>
+          <label>石の合計カラット (ct)
+            <input type="number" id="in-carat" step="any" min="0" placeholder="例: 1.77" inputmode="decimal">
+          </label>
+          <label>商品価格 (¥)
+            <input type="number" id="in-price" step="any" min="0" placeholder="例: 118182" inputmode="numeric">
+          </label>
+        </div>
+        <button id="btn-calc" class="primary">計算する</button>
+      </div>
+
+      <div class="card result-card" id="result" hidden>
+        <div class="result-main">
+          <div class="result-block metal">
+            <span class="result-label">金属価値</span>
+            <span class="result-value" id="r-metal">¥0</span>
+          </div>
+          <div class="result-divider">＋</div>
+          <div class="result-block stone">
+            <span class="result-label">石の価値</span>
+            <span class="result-value" id="r-stone">¥0</span>
+          </div>
+        </div>
+        <div class="result-sub">
+          <div><span>石の単価</span><b id="r-percarat">—</b></div>
+          <div><span>正味金属重量</span><b id="r-netweight">—</b></div>
+          <div><span>適用した地金価格</span><b id="r-ppg">—</b></div>
+        </div>
+        <p class="note warn" id="r-note" hidden></p>
+      </div>
+    </section>
+
+    <!-- ============ Database ============ -->
+    <section id="tab-db" class="tab-panel">
+      <div class="card">
+        <div class="db-toolbar">
+          <div class="db-meta">
+            <span class="db-count" id="db-count"></span>
+            <a id="db-source" href="#" target="_blank" rel="noopener noreferrer">出典データを開く ↗</a>
+          </div>
+          <button id="btn-edit" class="secondary">編集</button>
+        </div>
+        <div class="table-wrap" id="db-view">
+          <table>
+            <thead><tr><th>日付</th><th>金 ¥/g</th><th>プラチナ ¥/g</th></tr></thead>
+            <tbody id="db-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span id="foot-status">読み込み中…</span>
+  </footer>
+
+  <!-- ============ Login modal ============ -->
+  <div class="modal-overlay" id="login-modal" hidden>
+    <div class="modal">
+      <h2>編集ログイン</h2>
+      <label>パスワード
+        <input type="password" id="login-pass" autocomplete="off">
+      </label>
+      <p class="error" id="login-error" hidden>パスワードが違います</p>
+      <div class="modal-actions">
+        <button class="secondary" id="login-cancel">キャンセル</button>
+        <button class="primary" id="login-ok">ログイン</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Edit modal ============ -->
+  <div class="modal-overlay" id="edit-modal" hidden>
+    <div class="modal modal-wide">
+      <h2>地金価格の編集</h2>
+      <p class="hint">価格を直接編集できます。新しい日付は下の欄から追加してください。保存するとGitHubに反映されます。</p>
+
+      <div class="edit-add">
+        <input type="date" id="add-date">
+        <input type="number" id="add-gold" placeholder="金 ¥/g" step="any" min="0">
+        <input type="number" id="add-pt" placeholder="プラチナ ¥/g" step="any" min="0">
+        <button class="secondary" id="add-row">行を追加</button>
+      </div>
+
+      <div class="table-wrap edit-table-wrap">
+        <table>
+          <thead><tr><th>日付</th><th>金 ¥/g</th><th>プラチナ ¥/g</th><th></th></tr></thead>
+          <tbody id="edit-body"></tbody>
+        </table>
+      </div>
+
+      <div class="gh-save">
+        <label>GitHub トークン（保存に必要）
+          <input type="password" id="gh-token" placeholder="github_pat_... / ghp_..." autocomplete="off">
+        </label>
+        <label class="checkbox"><input type="checkbox" id="gh-remember"> このブラウザにトークンを保存</label>
+      </div>
+
+      <p class="status" id="save-status" hidden></p>
+
+      <div class="modal-actions">
+        <button class="secondary" id="edit-close">閉じる</button>
+        <button class="primary" id="save-github">GitHubに保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
