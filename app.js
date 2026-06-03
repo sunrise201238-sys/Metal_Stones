@@ -227,6 +227,11 @@ function buildSection(key) {
     state.priceOverride = isFinite(v) && v > 0 ? v : null;
     recalc();
   });
+  // マスクされた購入日欄を押すと、自動（購入日ベース）価格に戻す
+  el('date-masked').addEventListener('click', () => {
+    state.priceOverride = null;
+    recalc();
+  });
 
   function totalCarat() {
     return ['in-carat-1', 'in-carat-2', 'in-carat-3'].reduce((sum, n) => {
@@ -237,7 +242,14 @@ function buildSection(key) {
   function updateCaratTotal() {
     el('carat-total').textContent = '合計 ' + numFmt(totalCarat(), 3) + ' ct';
   }
+  // 地金価格がカスタムのとき購入日欄を XXXX/XX/XX 表示に切り替える
+  function updateDateMask() {
+    const custom = state.priceOverride != null;
+    el('in-date').classList.toggle('hidden', custom);
+    el('date-masked').classList.toggle('hidden', !custom);
+  }
   function recalc() {
+    updateDateMask();
     state.last = computeSection(el, state, totalCarat);
     updateCompare();
   }
@@ -358,7 +370,7 @@ function computeSection(el, state, totalCarat) {
   const msgs = [];
   let warn = false;
   if (custom) {
-    msgs.push('入力した地金価格で計算しています。購入日や金属を変えると自動価格に戻ります。');
+    msgs.push('入力した地金価格で計算しています。金属を変えるか「XXXX/XX/XX」欄を押すと自動価格（購入日ベース）に戻ります。');
   } else if (lk && !lk.exact) {
     msgs.push(`${date} の価格がないため、直近の ${lk.row.date} の価格を使用しました。`);
   }
@@ -437,6 +449,7 @@ function sectionHTML(key) {
       <div class="form-grid">
         <label>購入日
           <input type="date" id="in-date-${key}">
+          <button type="button" class="date-masked hidden" id="date-masked-${key}" title="クリックで購入日ベースの自動価格に戻す">XXXX/XX/XX</button>
         </label>
         <label>金属
           <select id="in-metal-${key}">
