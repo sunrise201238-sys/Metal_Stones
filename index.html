@@ -19,64 +19,36 @@
 
   <main>
     <!-- ============ Calculator ============ -->
+    <!-- 計算セクションは app.js が col-a / col-b に注入します（最大2つ） -->
     <section id="tab-calc" class="tab-panel active">
-      <div class="card">
-        <div class="form-grid">
-          <label>購入日
-            <input type="date" id="in-date">
-          </label>
-          <label>金属
-            <select id="in-metal">
-              <option value="Au">金 (Au)</option>
-              <option value="Pt">プラチナ (Pt)</option>
-            </select>
-          </label>
-          <label>純度
-            <select id="in-purity"></select>
-          </label>
-          <label class="hidden" id="custom-purity-wrap">純度（数値で直接入力）
-            <input type="number" id="in-purity-custom" step="any" min="0" placeholder="金=K数値 / Pt=1000分率">
-          </label>
-          <label>全体重量 (g)
-            <input type="number" id="in-weight" step="any" min="0" placeholder="例: 6.7" inputmode="decimal">
-          </label>
-          <label class="stone-carats">石のカラット（最大3石・ct）
-            <div class="carat-slots">
-              <input type="number" id="in-carat-1" class="carat-slot" step="any" min="0" placeholder="石1" inputmode="decimal">
-              <input type="number" id="in-carat-2" class="carat-slot" step="any" min="0" placeholder="石2" inputmode="decimal">
-              <input type="number" id="in-carat-3" class="carat-slot" step="any" min="0" placeholder="石3" inputmode="decimal">
-            </div>
-            <span class="carat-total" id="carat-total">合計 0 ct</span>
-          </label>
-          <label>商品価格 (¥)
-            <input type="number" id="in-price" step="any" min="0" placeholder="例: 118182" inputmode="numeric">
-          </label>
+      <div class="compute-area" id="compute-area">
+        <div class="compute-col" id="col-a">
+          <div class="col-head"><span class="col-badge">A</span></div>
         </div>
-        <button id="btn-calc" class="primary">計算する</button>
+
+        <div class="compute-controls">
+          <button id="btn-add" class="add-btn" type="button" title="比較セクションを追加" aria-label="比較セクションを追加">＋</button>
+          <button id="btn-copy" class="copy-btn hidden" type="button" title="Aの入力をBへコピー">コピー →</button>
+        </div>
+
+        <div class="compute-col hidden" id="col-b">
+          <div class="col-head">
+            <span class="col-badge">B</span>
+            <button id="btn-close-b" class="col-close" type="button" title="このセクションを閉じる" aria-label="このセクションを閉じる">×</button>
+          </div>
+        </div>
       </div>
 
-      <div class="card result-card" id="result" hidden>
-        <div class="result-main">
-          <div class="result-block metal">
-            <span class="result-label">金属価値</span>
-            <span class="result-value" id="r-metal">¥0</span>
-          </div>
-          <div class="result-divider">＋</div>
-          <div class="result-block stone">
-            <span class="result-label">石の価値</span>
-            <span class="result-value" id="r-stone">¥0</span>
-          </div>
+      <div class="card compare-card hidden" id="compare-panel">
+        <h3 class="compare-title">A と B の比較（差 = B − A）</h3>
+        <div class="table-wrap">
+          <table class="compare-table">
+            <thead>
+              <tr><th>項目</th><th>A</th><th>B</th><th>差</th><th>差 (%)</th></tr>
+            </thead>
+            <tbody id="compare-body"></tbody>
+          </table>
         </div>
-        <div class="result-sub">
-          <div><span>石の単価</span><b id="r-percarat">—</b></div>
-          <div><span>正味金属重量</span><b id="r-netweight">—</b></div>
-          <div class="ppg-cell">
-            <span>適用した地金価格</span>
-            <span class="ppg-row">¥<input type="number" id="in-ppg" class="ppg-input" step="any" min="0" inputmode="decimal"> /g</span>
-            <small class="ppg-date" id="r-ppg-date">—</small>
-          </div>
-        </div>
-        <p class="note warn" id="r-note" hidden></p>
       </div>
     </section>
 

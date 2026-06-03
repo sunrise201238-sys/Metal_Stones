@@ -34,7 +34,8 @@ const GRAM_PER_CARAT = 0.2;
 
 let DATA = { source: '', netJapan: { Au: 0, Pt: 0 }, prices: [] };
 let editData = null; // 編集用の作業コピー
-let priceOverride = null; // ユーザーが手入力した地金価格（null = データベースから自動）
+let secA = null; // 計算セクションA
+let secB = null; // 計算セクションB（比較用・任意）
 
 /* ---------- 数値フォーマット ---------- */
 const yen = (n) => '¥' + Math.round(n).toLocaleString('ja-JP');
@@ -48,18 +49,15 @@ document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
   setupTabs();
-  setupPurity();
   setupCalc();
   setupDbEdit();
-
-  // 購入日の初期値 = 今日
-  $('in-date').value = new Date().toISOString().slice(0, 10);
 
   try {
     const res = await fetch('prices.json?_=' + Date.now());
     if (!res.ok) throw new Error('HTTP ' + res.status);
     DATA = normalize(await res.json());
     renderDatabase();
+    recalcAll();
     $('foot-status').textContent =
       `データ ${DATA.prices.length} 件（${DATA.prices[0].date} 〜 ${DATA.prices[DATA.prices.length - 1].date}）`;
   } catch (e) {
@@ -96,24 +94,9 @@ function setupTabs() {
 }
 
 /* ============================================================
-   純度プルダウン
+   純度プルダウン（セクションごとの select / custom欄に対して適用）
    ============================================================ */
-function setupPurity() {
-  $('in-metal').addEventListener('change', () => {
-    fillPurity($('in-metal').value);
-    priceOverride = null; // 金属を変えたら自動価格に戻す
-    calculate();
-  });
-  $('in-purity').addEventListener('change', () => {
-    const custom = $('in-purity').value === 'custom';
-    $('custom-purity-wrap').classList.toggle('hidden', !custom);
-    calculate();
-  });
-  fillPurity('Au');
-}
-
-function fillPurity(metal) {
-  const sel = $('in-purity');
+function fillPurityEl(metal, sel, customWrap) {
   sel.innerHTML = '';
   PURITY[metal].forEach((o) => {
     const opt = document.createElement('option');
@@ -126,7 +109,7 @@ function fillPurity(metal) {
   c.value = 'custom';
   c.textContent = 'カスタム（数値入力）';
   sel.appendChild(c);
-  $('custom-purity-wrap').classList.add('hidden');
+  if (customWrap) customWrap.classList.add('hidden');
 }
 
 /* ============================================================
@@ -153,47 +136,155 @@ function purityFactor(metal, purity) {
 }
 
 /* ============================================================
-   計算
+   計算セクション（最大2つ：A と B）
    ============================================================ */
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function setupCalc() {
-  $('btn-calc').addEventListener('click', calculate);
-  // 購入日を変えたら自動価格に戻す
-  $('in-date').addEventListener('input', () => {
-    priceOverride = null;
-    calculate();
+  secA = buildSection('a');
+  $('col-a').appendChild(secA.root);
+  secA.setInputs({ date: todayISO() });
+  secA.recalc();
+
+  $('btn-add').addEventListener('click', showSectionB);
+  $('btn-close-b').addEventListener('click', hideSectionB);
+  $('btn-copy').addEventListener('click', () => {
+    if (!secB) return;
+    secB.setInputs(secA.getInputs()); // A の入力を B へコピー
+    secB.recalc();
   });
-  ['in-weight', 'in-price', 'in-purity-custom'].forEach((id) =>
-    $(id).addEventListener('input', calculate)
+}
+
+/* セクションBを表示（初回は生成し、Aの入力をコピーしておく） */
+function showSectionB() {
+  if (!secB) {
+    secB = buildSection('b');
+    $('col-b').appendChild(secB.root);
+    secB.setInputs(secA.getInputs());
+  }
+  $('col-b').classList.remove('hidden');
+  $('compute-area').classList.add('dual');
+  $('btn-add').classList.add('hidden');
+  $('btn-copy').classList.remove('hidden');
+  document.body.classList.add('dual-mode');
+  secB.recalc();
+}
+
+/* セクションBを閉じる（入力は保持。再度開くと復元される） */
+function hideSectionB() {
+  $('col-b').classList.add('hidden');
+  $('compute-area').classList.remove('dual');
+  $('btn-add').classList.remove('hidden');
+  $('btn-copy').classList.add('hidden');
+  document.body.classList.remove('dual-mode');
+  $('compare-panel').classList.add('hidden');
+}
+
+function recalcAll() {
+  if (secA) secA.recalc();
+  if (secB && !$('col-b').classList.contains('hidden')) secB.recalc();
+}
+
+/* ---------- 1セクション分のDOMを生成し、制御オブジェクトを返す ---------- */
+function buildSection(key) {
+  const root = document.createElement('div');
+  root.className = 'section-inner';
+  root.innerHTML = sectionHTML(key);
+
+  // このセクション内の要素を id で取得（id はキーで一意化されている）
+  const el = (name) => root.querySelector('#' + name + '-' + key);
+  const state = { priceOverride: null, last: { ok: false } };
+
+  fillPurityEl(el('in-metal').value, el('in-purity'), el('custom-purity-wrap'));
+
+  el('in-metal').addEventListener('change', () => {
+    fillPurityEl(el('in-metal').value, el('in-purity'), el('custom-purity-wrap'));
+    state.priceOverride = null; // 金属を変えたら自動価格に戻す
+    recalc();
+  });
+  el('in-purity').addEventListener('change', () => {
+    el('custom-purity-wrap').classList.toggle('hidden', el('in-purity').value !== 'custom');
+    recalc();
+  });
+  el('btn-calc').addEventListener('click', recalc);
+  el('in-date').addEventListener('input', () => {
+    state.priceOverride = null; // 購入日を変えたら自動価格に戻す
+    recalc();
+  });
+  ['in-weight', 'in-price', 'in-purity-custom'].forEach((n) =>
+    el(n).addEventListener('input', recalc)
   );
-  // 石のカラット（3スロット）: 合計を更新して再計算
-  ['in-carat-1', 'in-carat-2', 'in-carat-3'].forEach((id) =>
-    $(id).addEventListener('input', () => {
+  ['in-carat-1', 'in-carat-2', 'in-carat-3'].forEach((n) =>
+    el(n).addEventListener('input', () => {
       updateCaratTotal();
-      calculate();
+      recalc();
     })
   );
-  // 地金価格をユーザーが直接編集（カスタム）
-  $('in-ppg').addEventListener('input', () => {
-    const v = parseFloat($('in-ppg').value);
-    priceOverride = isFinite(v) && v > 0 ? v : null;
-    calculate();
+  el('in-ppg').addEventListener('input', () => {
+    const v = parseFloat(el('in-ppg').value);
+    state.priceOverride = isFinite(v) && v > 0 ? v : null;
+    recalc();
   });
+
+  function totalCarat() {
+    return ['in-carat-1', 'in-carat-2', 'in-carat-3'].reduce((sum, n) => {
+      const v = parseFloat(el(n).value);
+      return sum + (isFinite(v) && v > 0 ? v : 0);
+    }, 0);
+  }
+  function updateCaratTotal() {
+    el('carat-total').textContent = '合計 ' + numFmt(totalCarat(), 3) + ' ct';
+  }
+  function recalc() {
+    state.last = computeSection(el, state, totalCarat);
+    updateCompare();
+  }
+
   updateCaratTotal();
+
+  return {
+    key,
+    root,
+    state,
+    recalc,
+    getInputs: () => ({
+      date: el('in-date').value,
+      metal: el('in-metal').value,
+      puritySel: el('in-purity').value,
+      purityCustom: el('in-purity-custom').value,
+      weight: el('in-weight').value,
+      carat1: el('in-carat-1').value,
+      carat2: el('in-carat-2').value,
+      carat3: el('in-carat-3').value,
+      price: el('in-price').value,
+    }),
+    setInputs: (d) => {
+      if (d.date != null) el('in-date').value = d.date;
+      if (d.metal != null) {
+        el('in-metal').value = d.metal;
+        fillPurityEl(d.metal, el('in-purity'), el('custom-purity-wrap'));
+      }
+      if (d.puritySel != null) {
+        el('in-purity').value = d.puritySel;
+        el('custom-purity-wrap').classList.toggle('hidden', d.puritySel !== 'custom');
+      }
+      if (d.purityCustom != null) el('in-purity-custom').value = d.purityCustom;
+      if (d.weight != null) el('in-weight').value = d.weight;
+      if (d.carat1 != null) el('in-carat-1').value = d.carat1;
+      if (d.carat2 != null) el('in-carat-2').value = d.carat2;
+      if (d.carat3 != null) el('in-carat-3').value = d.carat3;
+      if (d.price != null) el('in-price').value = d.price;
+      state.priceOverride = null; // コピー直後は自動価格に戻す
+      updateCaratTotal();
+    },
+  };
 }
 
-/* 石のカラット3スロットの合計（ct） */
-function totalCarat() {
-  return ['in-carat-1', 'in-carat-2', 'in-carat-3'].reduce((sum, id) => {
-    const v = parseFloat($(id).value);
-    return sum + (isFinite(v) && v > 0 ? v : 0);
-  }, 0);
-}
-function updateCaratTotal() {
-  $('carat-total').textContent = '合計 ' + numFmt(totalCarat(), 3) + ' ct';
-}
-
-function calculate() {
-  const note = $('r-note');
+/* ---------- 1セクション分の計算＋結果描画。結果オブジェクトを返す ---------- */
+function computeSection(el, state, totalCarat) {
+  const note = el('r-note');
   const showNote = (msg, warn) => {
     note.textContent = msg;
     note.classList.toggle('warn', !!warn);
@@ -202,45 +293,45 @@ function calculate() {
   note.hidden = true;
   note.classList.remove('warn');
 
-  const date = $('in-date').value;
-  const metal = $('in-metal').value;
+  const date = el('in-date').value;
+  const metal = el('in-metal').value;
   const purity =
-    $('in-purity').value === 'custom'
-      ? parseFloat($('in-purity-custom').value)
-      : parseFloat($('in-purity').value);
-  const weight = parseFloat($('in-weight').value);
+    el('in-purity').value === 'custom'
+      ? parseFloat(el('in-purity-custom').value)
+      : parseFloat(el('in-purity').value);
+  const weight = parseFloat(el('in-weight').value);
   const carat = totalCarat();
-  const price = parseFloat($('in-price').value);
+  const price = parseFloat(el('in-price').value);
 
   if (!date || !(purity > 0) || !(weight > 0) || !(price > 0)) {
-    $('result').hidden = true;
-    return;
+    el('result').hidden = true;
+    return { ok: false };
   }
   if (!DATA.prices.length) {
-    $('result').hidden = false;
+    el('result').hidden = false;
     showNote('地金価格データが読み込まれていません。', true);
-    return;
+    return { ok: false };
   }
 
   const lk = lookupPrice(date, metal);
-  const custom = priceOverride != null;
+  const custom = state.priceOverride != null;
 
   // 適用する地金価格（¥/g）と、その横に出す日付ラベルを決める
   let perGram, dateLabel;
   if (custom) {
-    perGram = priceOverride;
+    perGram = state.priceOverride;
     dateLabel = 'XXXX/XX/XX';
   } else {
     if (!lk) {
-      $('result').hidden = false;
-      $('r-metal').textContent = '—';
-      $('r-stone').textContent = '—';
-      $('r-percarat').textContent = '—';
-      $('r-netweight').textContent = '—';
-      $('r-ppg-date').textContent = '（—）';
-      if (document.activeElement !== $('in-ppg')) $('in-ppg').value = '';
+      el('result').hidden = false;
+      el('r-metal').textContent = '—';
+      el('r-stone').textContent = '—';
+      el('r-percarat').textContent = '—';
+      el('r-netweight').textContent = '—';
+      el('r-ppg-date').textContent = '（—）';
+      if (document.activeElement !== el('in-ppg')) el('in-ppg').value = '';
       showNote(`${date} 以前の地金価格データがありません。データベースに価格を追加してください。`, true);
-      return;
+      return { ok: false };
     }
     perGram = lk.perGram;
     dateLabel = lk.row.date;
@@ -252,16 +343,16 @@ function calculate() {
   const stoneValue = price - metalValue;
   const perCarat = carat > 0 ? stoneValue / carat : null;
 
-  $('result').hidden = false;
-  $('r-metal').textContent = yen(metalValue);
-  $('r-stone').textContent = yen(stoneValue);
-  $('r-percarat').textContent = perCarat == null ? '— (石なし)' : yen(perCarat) + ' /ct';
-  $('r-netweight').textContent = numFmt(netWeight) + ' g';
+  el('result').hidden = false;
+  el('r-metal').textContent = yen(metalValue);
+  el('r-stone').textContent = yen(stoneValue);
+  el('r-percarat').textContent = perCarat == null ? '— (石なし)' : yen(perCarat) + ' /ct';
+  el('r-netweight').textContent = numFmt(netWeight) + ' g';
 
   // 地金価格の入力欄：入力中（フォーカス中）は上書きしない
-  const inPpg = $('in-ppg');
+  const inPpg = el('in-ppg');
   if (!custom && document.activeElement !== inPpg) inPpg.value = perGram;
-  $('r-ppg-date').textContent = '（' + dateLabel + '）';
+  el('r-ppg-date').textContent = '（' + dateLabel + '）';
 
   // 注意メッセージ
   const msgs = [];
@@ -274,6 +365,133 @@ function calculate() {
   if (netWeight < 0) { msgs.push('カラットが全体重量に対して大きすぎます（正味金属重量がマイナス）。'); warn = true; }
   if (stoneValue < 0) { msgs.push('石の価値がマイナスです。商品価格または地金価格をご確認ください。'); warn = true; }
   if (msgs.length) showNote(msgs.join(' '), warn);
+
+  return { ok: true, price, metalValue, stoneValue, perCarat, perGram };
+}
+
+/* ============================================================
+   A と B の差を表示
+   ============================================================ */
+function updateCompare() {
+  const panel = $('compare-panel');
+  const bActive = secB && !$('col-b').classList.contains('hidden');
+  if (!bActive) {
+    panel.classList.add('hidden');
+    return;
+  }
+
+  const body = $('compare-body');
+  body.innerHTML = '';
+  panel.classList.remove('hidden');
+
+  const a = secA.state.last;
+  const b = secB.state.last;
+  if (!a.ok || !b.ok) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.className = 'compare-empty';
+    td.textContent = 'A と B の両方で計算結果が出ると、差が表示されます。';
+    tr.appendChild(td);
+    body.appendChild(tr);
+    return;
+  }
+
+  const rows = [
+    { label: '商品価格', a: a.price, b: b.price, perCt: false },
+    { label: '金属価値', a: a.metalValue, b: b.metalValue, perCt: false },
+    { label: '石の価値', a: a.stoneValue, b: b.stoneValue, perCt: false },
+    { label: '石の単価', a: a.perCarat, b: b.perCarat, perCt: true },
+  ];
+
+  for (const r of rows) {
+    const fmt = r.perCt ? (v) => yen(v) + ' /ct' : yen;
+    const has = r.a != null && r.b != null && isFinite(r.a) && isFinite(r.b);
+    const diff = has ? r.b - r.a : null;
+    const cls = !has ? '' : diff > 0 ? 'diff-pos' : diff < 0 ? 'diff-neg' : '';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td>${r.label}</td>` +
+      `<td>${r.a == null ? '—' : fmt(r.a)}</td>` +
+      `<td>${r.b == null ? '—' : fmt(r.b)}</td>` +
+      `<td class="${cls}">${has ? signedVal(diff, fmt) : '—'}</td>` +
+      `<td class="${cls}">${has && r.a !== 0 ? signedPct((diff / Math.abs(r.a)) * 100) : '—'}</td>`;
+    body.appendChild(tr);
+  }
+}
+
+function signedVal(v, fmt) {
+  const sign = v > 0 ? '+' : v < 0 ? '−' : '±';
+  return sign + fmt(Math.abs(v));
+}
+function signedPct(p) {
+  const sign = p > 0 ? '+' : p < 0 ? '−' : '±';
+  return sign + numFmt(Math.abs(p), 1) + '%';
+}
+
+/* ---------- セクションのHTML（key = 'a' | 'b'。id をキーで一意化） ---------- */
+function sectionHTML(key) {
+  return `
+    <div class="card compute-card">
+      <div class="form-grid">
+        <label>購入日
+          <input type="date" id="in-date-${key}">
+        </label>
+        <label>金属
+          <select id="in-metal-${key}">
+            <option value="Au">金 (Au)</option>
+            <option value="Pt">プラチナ (Pt)</option>
+          </select>
+        </label>
+        <label>純度
+          <select id="in-purity-${key}"></select>
+        </label>
+        <label class="hidden" id="custom-purity-wrap-${key}">純度（数値で直接入力）
+          <input type="number" id="in-purity-custom-${key}" step="any" min="0" placeholder="金=K数値 / Pt=1000分率">
+        </label>
+        <label>全体重量 (g)
+          <input type="number" id="in-weight-${key}" step="any" min="0" placeholder="例: 6.7" inputmode="decimal">
+        </label>
+        <label class="stone-carats">石のカラット（最大3石・ct）
+          <div class="carat-slots">
+            <input type="number" id="in-carat-1-${key}" class="carat-slot" step="any" min="0" placeholder="石1" inputmode="decimal">
+            <input type="number" id="in-carat-2-${key}" class="carat-slot" step="any" min="0" placeholder="石2" inputmode="decimal">
+            <input type="number" id="in-carat-3-${key}" class="carat-slot" step="any" min="0" placeholder="石3" inputmode="decimal">
+          </div>
+          <span class="carat-total" id="carat-total-${key}">合計 0 ct</span>
+        </label>
+        <label>商品価格 (¥)
+          <input type="number" id="in-price-${key}" step="any" min="0" placeholder="例: 118182" inputmode="numeric">
+        </label>
+      </div>
+      <button id="btn-calc-${key}" class="primary">計算する</button>
+    </div>
+
+    <div class="card result-card" id="result-${key}" hidden>
+      <div class="result-main">
+        <div class="result-block metal">
+          <span class="result-label">金属価値</span>
+          <span class="result-value" id="r-metal-${key}">¥0</span>
+        </div>
+        <div class="result-divider">＋</div>
+        <div class="result-block stone">
+          <span class="result-label">石の価値</span>
+          <span class="result-value" id="r-stone-${key}">¥0</span>
+        </div>
+      </div>
+      <div class="result-sub">
+        <div><span>石の単価</span><b id="r-percarat-${key}">—</b></div>
+        <div><span>正味金属重量</span><b id="r-netweight-${key}">—</b></div>
+        <div class="ppg-cell">
+          <span>適用した地金価格</span>
+          <span class="ppg-row">¥<input type="number" id="in-ppg-${key}" class="ppg-input" step="any" min="0" inputmode="decimal"> /g</span>
+          <small class="ppg-date" id="r-ppg-date-${key}">—</small>
+        </div>
+      </div>
+      <p class="note warn" id="r-note-${key}" hidden></p>
+    </div>
+  `;
 }
 
 /* ============================================================
@@ -503,7 +721,7 @@ async function saveToGitHub() {
     // 反映
     DATA = normalize(editData);
     renderDatabase();
-    calculate();
+    recalcAll();
     setStatus('保存しました。GitHub Pages への反映には最大1〜2分かかります。', 'ok');
   } catch (e) {
     setStatus(e.message, 'err');
