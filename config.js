@@ -9,9 +9,11 @@ window.APP_CONFIG = {
     repo: 'Metal_Stones',       // ← リポジトリ名
     branch: 'main',                // 通常は main のまま
     dataPath: 'prices.json',       // 価格データのファイル名（変更不要）
-  },
 
-  // 編集画面のパスワード（固定）。自由に変更してください。
-  // Fixed password for the Edit screen. Change it to anything you like.
-  editPassword: 'metal2026',
+    // 編集用トークンをパスワードで暗号化（スクランブル）した文字列。
+    // encrypt-token.html で作成し、ここに貼り付けてください。
+    // The edit token, scrambled with your password. Generate it with
+    // encrypt-token.html and paste the result between the quotes below.
+    encToken: '',
+  },
 };

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>編集トークンのスクランブル生成（オーナー専用）</title>
+  <style>
+    :root { --line:#d9d4cb; --ink:#2b2622; --muted:#7a726a; --primary:#9a7b4f; --bg:#faf8f4; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+           max-width: 720px; margin: 0 auto; padding: 28px 18px 70px; color: var(--ink); background: var(--bg); line-height: 1.7; }
+    h1 { font-size: 1.3rem; margin-bottom: .3rem; }
+    p { color: var(--muted); margin: .4rem 0; }
+    label { display: block; font-weight: 600; margin: 18px 0 6px; }
+    input[type=password], textarea {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; background: #fff; }
+    textarea { min-height: 110px; resize: vertical; word-break: break-all; }
+    button { margin-top: 18px; padding: 11px 20px; border: none; border-radius: 10px;
+             background: var(--primary); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { filter: brightness(1.06); }
+    button.ghost { background: #efe9df; color: var(--ink); }
+    .out { margin-top: 22px; }
+    .note { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-top: 26px; font-size: .92rem; }
+    .note ol { margin: .5rem 0 0; padding-left: 1.3rem; }
+    .note li { margin: .25rem 0; color: var(--ink); }
+    code { background: #efe9df; padding: 1px 6px; border-radius: 6px; }
+    #msg { font-weight: 600; min-height: 1.2em; }
+    .err { color: #b3261e; }
+    .ok { color: #1b7f3b; }
+  </style>
+</head>
+<body>
+  <h1>編集トークンのスクランブル生成</h1>
+  <p>GitHub トークンをパスワードで暗号化（スクランブル）し、<code>config.js</code> に貼り付ける文字列を作ります。</p>
+  <p><strong>このページはオーナー専用です。</strong>サイトには公開・リンクしないでください。入力内容はインターネットに送信されず、すべてこのブラウザの中だけで処理されます。</p>
+
+  <label>GitHub トークン</label>
+  <input type="password" id="token" placeholder="github_pat_... / ghp_..." autocomplete="off">
+
+  <label>パスワード（編集ログインで使う合言葉）</label>
+  <input type="password" id="pass" autocomplete="off">
+
+  <label>パスワード（確認）</label>
+  <input type="password" id="pass2" autocomplete="off">
+
+  <button id="gen">スクランブル生成</button>
+  <p id="msg"></p>
+
+  <div class="out" id="outwrap" hidden>
+    <label>config.js に貼り付ける文字列（encToken）</label>
+    <textarea id="out" readonly></textarea>
+    <button id="copy" class="ghost">コピー</button>
+  </div>
+
+  <div class="note">
+    <strong>使い方</strong>
+    <ol>
+      <li>上の3つの欄を入力して「スクランブル生成」を押す。</li>
+      <li>出てきた文字列をコピーする。</li>
+      <li><code>config.js</code> の <code>encToken: ''</code> の <code>''</code> の中に貼り付ける。</li>
+      <li><code>config.js</code> を GitHub にアップロードする。</li>
+      <li>編集する人には、トークンではなく<strong>パスワードだけ</strong>を伝える。</li>
+    </ol>
+    パスワードを変えたいときは、ここで作り直して <code>encToken</code> を差し替えればOKです。
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    function bytesToB64(bytes) {
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin);
+    }
+
+    // app.js の unscramble() と同じ方式（PBKDF2-SHA256 / AES-GCM）
+    async function scramble(token, password) {
+      const enc = new TextEncoder();
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: 200000, hash: 'SHA-256' },
+        baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+      );
+      const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(token)));
+      const out = new Uint8Array(salt.length + iv.length + ct.length);
+      out.set(salt, 0);
+      out.set(iv, salt.length);
+      out.set(ct, salt.length + iv.length);
+      return bytesToB64(out);
+    }
+
+    $('gen').addEventListener('click', async () => {
+      const msg = $('msg');
+      const token = $('token').value.trim();
+      const pass = $('pass').value;
+      const pass2 = $('pass2').value;
+      msg.className = ''; msg.textContent = '';
+
+      if (!window.crypto || !crypto.subtle) {
+        msg.className = 'err';
+        msg.textContent = 'このブラウザ／環境では暗号化できません（https か localhost で開いてください）。';
+        return;
+      }
+      if (!token) { msg.className = 'err'; msg.textContent = 'トークンを入力してください。'; return; }
+      if (!/^(github_pat_|ghp_|gho_|ghs_)/.test(token)) {
+        msg.className = 'err'; msg.textContent = 'トークンの形式が正しくないようです（github_pat_ または ghp_ で始まります）。'; return;
+      }
+      if (pass.length < 6) { msg.className = 'err'; msg.textContent = 'パスワードは6文字以上にしてください。'; return; }
+      if (pass !== pass2) { msg.className = 'err'; msg.textContent = 'パスワード（確認）が一致しません。'; return; }
+
+      try {
+        const blob = await scramble(token, pass);
+        $('out').value = blob;
+        $('outwrap').hidden = false;
+        msg.className = 'ok';
+        msg.textContent = '生成しました。下の文字列を config.js の encToken に貼り付けてください。';
+      } catch (e) {
+        msg.className = 'err';
+        msg.textContent = '生成に失敗しました: ' + e.message;
+      }
+    });
+
+    $('copy').addEventListener('click', async () => {
+      const out = $('out');
+      out.select();
+      try {
+        await navigator.clipboard.writeText(out.value);
+        $('msg').className = 'ok';
+        $('msg').textContent = 'コピーしました。';
+      } catch {
+        document.execCommand('copy');
+      }
+    });
+  </script>
+</body>
+</html>

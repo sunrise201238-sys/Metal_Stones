@@ -36,6 +36,7 @@ let DATA = { source: '', netJapan: { Au: 0, Pt: 0 }, prices: [] };
 let editData = null; // 編集用の作業コピー
 let secA = null; // 計算セクションA
 let secB = null; // 計算セクションB（比較用・任意）
+let ghToken = null; // ログイン成功時にメモリ内だけで保持する編集トークン
 
 /* ---------- 数値フォーマット ---------- */
 const yen = (n) => '¥' + Math.round(n).toLocaleString('ja-JP');
@@ -551,13 +552,74 @@ function setupDbEdit() {
   $('save-github').addEventListener('click', saveToGitHub);
 }
 
-function tryLogin() {
+/* ---------- トークンのスクランブル解除（パスワードで復号） ----------
+   config.js の encToken は「salt(16) + iv(12) + 暗号文」を base64 にしたもの。
+   encrypt-token.html と同じ方式（PBKDF2-SHA256 / AES-GCM）で復号します。
+   ※ Web Crypto は https か localhost でのみ動作します（file:// は不可）。 */
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function deriveKey(password, salt, usage) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 200000, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    [usage]
+  );
+}
+
+async function unscramble(blobB64, password) {
+  const raw = b64ToBytes(blobB64);
+  const salt = raw.slice(0, 16);
+  const iv = raw.slice(16, 28);
+  const data = raw.slice(28);
+  const key = await deriveKey(password, salt, 'decrypt');
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+  return new TextDecoder().decode(plain);
+}
+
+async function tryLogin() {
   const pass = $('login-pass').value;
-  if (pass === (CFG.editPassword ?? '')) {
+  const enc = (CFG.github && CFG.github.encToken) || '';
+  const errEl = $('login-error');
+
+  if (!enc) {
+    errEl.textContent = '編集トークンが未設定です。encrypt-token.html で作成し config.js に貼り付けてください。';
+    errEl.hidden = false;
+    return;
+  }
+  if (!pass) {
+    errEl.textContent = 'パスワードを入力してください。';
+    errEl.hidden = false;
+    return;
+  }
+  if (!window.crypto || !crypto.subtle) {
+    errEl.textContent = 'この環境では復号できません（https か localhost で開いてください）。';
+    errEl.hidden = false;
+    return;
+  }
+
+  $('login-ok').disabled = true;
+  try {
+    const token = await unscramble(enc, pass);
+    // 復号できても中身がトークン形式でなければ、誤ったパスワードとみなす
+    if (!/^(github_pat_|ghp_|gho_|ghs_)/.test(token)) throw new Error('format');
+    ghToken = token;
     $('login-modal').hidden = true;
     openEditor();
-  } else {
-    $('login-error').hidden = false;
+  } catch (e) {
+    errEl.textContent = 'パスワードが違います';
+    errEl.hidden = false;
+  } finally {
+    $('login-ok').disabled = false;
   }
 }
 
@@ -571,11 +633,6 @@ function openEditor() {
   $('add-gold').value = '';
   $('add-pt').value = '';
   $('save-status').hidden = true;
-
-  // 保存済みトークンを復元
-  const saved = localStorage.getItem('gh_token');
-  $('gh-token').value = saved || '';
-  $('gh-remember').checked = !!saved;
 
   renderEditor();
   $('edit-modal').hidden = false;
@@ -678,20 +735,16 @@ function b64utf8(str) {
 /* ---------- GitHub Contents API で保存 ---------- */
 async function saveToGitHub() {
   const gh = CFG.github || {};
-  const token = $('gh-token').value.trim();
+  const token = ghToken;
 
   if (!gh.owner || !gh.repo || gh.owner.includes('YOUR_') || gh.repo.includes('YOUR_')) {
     setStatus('config.js の owner / repo を設定してください。', 'err');
     return;
   }
   if (!token) {
-    setStatus('GitHub トークンを入力してください。', 'err');
+    setStatus('トークンが見つかりません。いったん閉じてログインし直してください。', 'err');
     return;
   }
-
-  // トークンの保存／削除
-  if ($('gh-remember').checked) localStorage.setItem('gh_token', token);
-  else localStorage.removeItem('gh_token');
 
   const branch = gh.branch || 'main';
   const path = gh.dataPath || 'prices.json';
