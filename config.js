@@ -14,6 +14,6 @@ window.APP_CONFIG = {
     // encrypt-token.html で作成し、ここに貼り付けてください。
     // The edit token, scrambled with your password. Generate it with
     // encrypt-token.html and paste the result between the quotes below.
-    encToken: '',
+    encToken: 'gWRfO2BF8MceZqVanuBoLE9oM36RR9nOAnu5XSEXyKzpH6qHwpaA9XXPQAXJQL/X4TlpYk3CF6z10DCLKYEcbl4SpYXsx1mH2VweMxCdFQnpws27BoS+6/9vJ7grPRvOuWX7i/tbbrczJjzhPbr1M9zJimwLsaVzSkE2Db36xf65hCqSxl6KQEg=',
   },
 };
